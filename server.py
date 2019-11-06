@@ -2,14 +2,15 @@ import SimpleHTTPServer
 import SocketServer
 import json
 import hmac
+import hashlib
 import os
 
 PORT = 4532
 
 class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
-    def _set_headers(self):
-        self.send_response(200)
+    def _set_headers(self, code):
+        self.send_response(code)
         self.send_header("Content-type", "text/html")
         self.end_headers()
 
@@ -19,22 +20,24 @@ class ServerHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         content_len = int(self.headers.getheader('content-length', 0))
-        verify = self.headers.getheader('X-Hub-Signature',0)
+        verify = self.headers.getheader('X-Hub-Signature')
         post_body = self.rfile.read(content_len)
-        print post_body
         loaded_json = json.loads(post_body)
-        digest1 = hmac.new(SECRET,post_body)
-        print(digest1.hexdigest())
-        if hmac.compare_digest(digest1.hexdigest(),verify[5:]):
+        signature = hmac.new(SECRET,post_body, hashlib.sha1).hexdigest()
+        if hmac.compare_digest(signature,verify[5:]):
             if loaded_json["repository"]["full_name"] == REPO:
-                print "execute deploy"
-                self._set_headers()
-                self.wfile.write(self._html("POST Success!"))
+                try: 
+                    os.system("./deploy.sh")
+                    self._set_headers(200)
+                    self.wfile.write(self._html("POST Success!"))
+                except:
+                    self._set_headers(500)
+                    self.wfile.write(self._html("Deploy failed!"))
             else:
-                self._set_headers()
+                self._set_headers(500)
                 self.wfile.write(self._html("POST OK, Wrong repository...!"))
         else:
-            self._set_headers()
+            self._set_headers(500)
             self.wfile.write(self._html("POST OK, Hash check failed...!"))
 
 try:  
